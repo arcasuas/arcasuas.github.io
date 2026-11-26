@@ -171,6 +171,6 @@
         });
       });
     }, { rootMargin: '-15% 0px -55% 0px', threshold: 0 });
-    ['technology', 'demo', 'mission', 'team'].forEach((id) => observer.observe(byId(id)));
+    ['technology', 'demo', 'mission', 'discovery', 'team'].forEach((id) => observer.observe(byId(id)));
   }
 })();
