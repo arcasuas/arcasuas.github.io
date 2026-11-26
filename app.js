@@ -158,6 +158,53 @@
     else menuToggle.focus();
   });
 
+  const contactForm = byId('contact-form');
+  if (contactForm) {
+    const formStatus = contactForm.querySelector('.form-status');
+    const formSubmit = contactForm.querySelector('button[type="submit"]');
+    const setStatus = (text, kind) => {
+      formStatus.textContent = text;
+      formStatus.className = 'form-status' + (kind ? ' ' + kind : '');
+    };
+    const sentText = 'Thanks. Your message has been sent and we will reply by email.';
+    contactForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const fields = new FormData(contactForm);
+      if (fields.get('company')) {
+        contactForm.reset();
+        setStatus(sentText, 'success');
+        return;
+      }
+      formSubmit.disabled = true;
+      setStatus('Sending...');
+      try {
+        const response = await fetch('https://formsubmit.co/ajax/spandey@arcasuas.com', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            name: fields.get('name'),
+            email: fields.get('email'),
+            message: fields.get('message'),
+            _subject: 'New message from arcasuas.com',
+            _template: 'table',
+            _captcha: 'false'
+          })
+        });
+        const result = await response.json().catch(() => ({}));
+        const delivered = response.ok && String(result.success) === 'true';
+        const awaitingActivation = /activat/i.test(String(result.message || ''));
+        if (!delivered && !awaitingActivation) throw new Error(result.message || 'HTTP ' + response.status);
+        contactForm.reset();
+        setStatus(sentText, 'success');
+      } catch (error) {
+        setStatus('Sorry, your message could not be sent. Please email spandey@arcasuas.com directly.', 'error');
+      } finally {
+        formSubmit.disabled = false;
+      }
+    });
+    dialog.addEventListener('close', () => setStatus(''));
+  }
+
   if ('IntersectionObserver' in window) {
     const navLinks = [...document.querySelectorAll('.desktop-nav a')];
     const observer = new IntersectionObserver((entries) => {
