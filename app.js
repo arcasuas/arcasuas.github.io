@@ -334,6 +334,142 @@
     mission: { number: '04', kicker: 'Price the task before you take it.', description: 'The route, the assigned task, and the protected reserve define what the next leg will cost. Polaris weighs that cost against the energy left to show whether the aircraft can finish the task and still get home.', path: 'M508 160 352 137' },
     weather: { number: '05', kicker: 'Conditions change. Energy changes.', description: 'Wind and temperature change both flight demand and battery behavior. They belong in the estimate, not just in the preflight briefing.', path: 'M354 218 318 158' }
   };
+  // Star trails around Polaris. The sky turns around the center, each input sits on its own ring,
+  // and the selected input lights its ring and feeds Polaris.
+  const trails = (() => {
+    const box = document.querySelector('.model-graphic'), canvas = byId('model-trails');
+    if (!box || !canvas || !canvas.getContext) return { select() {} };
+    const tc = canvas.getContext('2d');
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const inputs = [
+      { key: 'battery', label: 'BATTERY PROPERTIES', r: 0.62, a: 200, below: false },
+      { key: 'controller', label: 'FLIGHT CONTROLLER', r: 0.78, a: -16, below: false },
+      { key: 'registry', label: 'PACK REGISTRY', r: 0.46, a: 148, below: true },
+      { key: 'mission', label: 'MISSION PLAN', r: 0.7, a: 13, below: true },
+      { key: 'weather', label: 'WEATHER', r: 0.33, a: 68, below: true }
+    ];
+    let W = 0, H = 0, D = 1, R = 1, cx = 0, cy = 0, reach = 0, layer = null, active = 'battery', hover = null, running = false, seen = true;
+    const born = performance.now();
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const at = (s) => { const t = s.a * Math.PI / 180; return [cx + s.r * R * Math.cos(t), cy + s.r * R * Math.sin(t)]; };
+
+    function build() {
+      const rect = box.getBoundingClientRect();
+      if (!rect.width || !rect.height) return false;
+      W = rect.width; H = rect.height; D = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(W * D); canvas.height = Math.round(H * D);
+      cx = W / 2; cy = H * 0.5; R = Math.min(W / 2, H * 1.25);
+      reach = Math.ceil(Math.hypot(W / 2, H / 2)) + 6;
+      layer = document.createElement('canvas'); layer.width = layer.height = Math.ceil(reach * 2 * D);
+      const g = layer.getContext('2d'); g.scale(D, D); g.translate(reach, reach); g.lineCap = 'butt';
+      seed = 7;
+      const count = Math.round(80 + W / 5);
+      for (let i = 0; i < count; i++) {
+        // every trail spans about the same angle, the way a long exposure records the turning sky
+        const r = 12 + Math.pow(rnd(), 0.85) * (reach - 12), len = 0.7 + rnd() * 0.16, start = rnd() * Math.PI * 2;
+        const bright = Math.pow(rnd(), 2.4), width = 0.5 + bright * 1.1, alpha = 0.07 + bright * 0.5;
+        const tone = rnd() < 0.16 ? '215,175,91' : (rnd() < 0.3 ? '204,212,232' : '245,238,224');
+        for (let k = 0; k < 10; k++) {
+          g.strokeStyle = 'rgba(' + tone + ',' + (alpha * Math.pow(1 - k / 10, 1.6)) + ')'; g.lineWidth = width;
+          g.beginPath(); g.arc(0, 0, r, start + len * k / 10, start + len * (k + 1) / 10 + 0.004); g.stroke();
+        }
+        g.fillStyle = 'rgba(' + tone + ',' + Math.min(1, alpha * 1.7) + ')';
+        g.beginPath(); g.arc(r * Math.cos(start), r * Math.sin(start), width * 0.85, 0, 6.283); g.fill();
+      }
+      return true;
+    }
+
+    function spike(x, y, len, alpha, angle) {
+      const dx = Math.cos(angle) * len, dy = Math.sin(angle) * len, l = tc.createLinearGradient(x - dx, y - dy, x + dx, y + dy);
+      l.addColorStop(0, 'rgba(255,236,190,0)'); l.addColorStop(0.5, 'rgba(255,244,214,' + alpha + ')'); l.addColorStop(1, 'rgba(255,236,190,0)');
+      tc.strokeStyle = l; tc.lineWidth = 1.1; tc.beginPath(); tc.moveTo(x - dx, y - dy); tc.lineTo(x + dx, y + dy); tc.stroke();
+    }
+
+    function draw(now) {
+      if (!layer) return;
+      const t = calm ? 0 : (now - born) / 1000, small = W < 420, fs = small ? 6 : 7;
+      tc.setTransform(D, 0, 0, D, 0, 0); tc.clearRect(0, 0, W, H);
+      const glow = tc.createRadialGradient(cx, cy, 0, cx, cy, R * 0.95);
+      glow.addColorStop(0, 'rgba(215,175,91,.12)'); glow.addColorStop(1, 'rgba(215,175,91,0)');
+      tc.fillStyle = glow; tc.fillRect(0, 0, W, H);
+      // the sky turns counterclockwise around Polaris
+      tc.save(); tc.translate(cx, cy); tc.rotate(-t * 0.045); tc.drawImage(layer, -reach, -reach, reach * 2, reach * 2); tc.restore();
+      // each input rides its own ring, with a short trail behind it
+      inputs.forEach((s) => {
+        const on = s.key === active, rr = s.r * R, a = s.a * Math.PI / 180;
+        tc.lineWidth = 1; tc.strokeStyle = on ? 'rgba(215,175,91,.3)' : 'rgba(200,190,170,.1)';
+        tc.setLineDash(on ? [] : [2, 6]); tc.beginPath(); tc.arc(cx, cy, rr, 0, 6.283); tc.stroke(); tc.setLineDash([]);
+        for (let k = 0; k < 12; k++) {
+          tc.strokeStyle = (on ? 'rgba(232,196,120,' : 'rgba(235,228,214,') + ((on ? 0.9 : 0.4) * Math.pow(1 - k / 12, 1.5)) + ')';
+          tc.lineWidth = on ? 1.8 : 1.1; tc.beginPath(); tc.arc(cx, cy, rr, a + k * 0.05, a + (k + 1) * 0.05 + 0.003); tc.stroke();
+        }
+      });
+      // fade the sky into the panel instead of cutting it off at the edges
+      tc.globalCompositeOperation = 'destination-in';
+      const ex = Math.min(0.14, 56 / W), ey = Math.min(0.12, 20 / H);
+      const fx = tc.createLinearGradient(0, 0, W, 0);
+      fx.addColorStop(0, 'rgba(0,0,0,0)'); fx.addColorStop(ex, 'rgba(0,0,0,1)'); fx.addColorStop(1 - ex, 'rgba(0,0,0,1)'); fx.addColorStop(1, 'rgba(0,0,0,0)');
+      tc.fillStyle = fx; tc.fillRect(0, 0, W, H);
+      const fy = tc.createLinearGradient(0, 0, 0, H);
+      fy.addColorStop(0, 'rgba(0,0,0,0)'); fy.addColorStop(ey, 'rgba(0,0,0,1)'); fy.addColorStop(1 - ey, 'rgba(0,0,0,1)'); fy.addColorStop(1, 'rgba(0,0,0,0)');
+      tc.fillStyle = fy; tc.fillRect(0, 0, W, H);
+      tc.globalCompositeOperation = 'source-over';
+      inputs.forEach((s) => {
+        const on = s.key === active, p = at(s), x = p[0], y = p[1];
+        if (on) {
+          const d = Math.hypot(x - cx, y - cy), ex2 = cx + (x - cx) * 12 / d, ey2 = cy + (y - cy) * 12 / d;
+          tc.strokeStyle = 'rgba(215,175,91,.5)'; tc.lineWidth = 1; tc.beginPath(); tc.moveTo(x, y); tc.lineTo(ex2, ey2); tc.stroke();
+          for (let q = 0; q < 3; q++) {
+            const u = calm ? (q + 0.5) / 3 : (t * 0.45 + q / 3) % 1, px = x + (ex2 - x) * u, py = y + (ey2 - y) * u;
+            tc.fillStyle = 'rgba(255,226,150,' + (0.95 * Math.sin(u * Math.PI)) + ')'; tc.beginPath(); tc.arc(px, py, 1.6, 0, 6.283); tc.fill();
+          }
+        }
+        const beat = on && !calm ? 0.5 + 0.5 * Math.sin(t * 2.4) : 0.6, hr = on ? 13 + beat * 5 : 8;
+        const halo = tc.createRadialGradient(x, y, 0, x, y, hr);
+        halo.addColorStop(0, on ? 'rgba(232,196,120,.6)' : 'rgba(245,238,224,.32)'); halo.addColorStop(1, on ? 'rgba(232,196,120,0)' : 'rgba(245,238,224,0)');
+        tc.fillStyle = halo; tc.beginPath(); tc.arc(x, y, hr, 0, 6.283); tc.fill();
+        tc.fillStyle = on ? '#f3d48e' : '#ece5d6'; tc.beginPath(); tc.arc(x, y, on ? 3.2 : (s.key === hover ? 2.8 : 2.2), 0, 6.283); tc.fill();
+        tc.font = fs + 'px ArcasMono, "Courier New", monospace'; if ('letterSpacing' in tc) tc.letterSpacing = '1px';
+        tc.textBaseline = 'middle'; tc.textAlign = 'left';
+        const tw = tc.measureText(s.label).width, lx = Math.max(6, Math.min(W - 6 - tw, x - tw / 2)), ly = s.below ? y + 15 : y - 13;
+        tc.fillStyle = 'rgba(21,20,18,.6)'; tc.fillRect(lx - 4, ly - fs * 0.85, tw + 7, fs * 1.7);
+        tc.fillStyle = on ? '#d7af5b' : (s.key === hover ? '#dccca6' : '#b3a07c'); tc.fillText(s.label, lx, ly);
+      });
+      // Polaris
+      const pulse = calm ? 0.6 : 0.5 + 0.5 * Math.sin(t * 1.6), big = small ? 0.75 : 1;
+      const ph = tc.createRadialGradient(cx, cy, 0, cx, cy, (34 + pulse * 8) * big);
+      ph.addColorStop(0, 'rgba(255,230,160,.85)'); ph.addColorStop(0.28, 'rgba(215,175,91,.3)'); ph.addColorStop(1, 'rgba(215,175,91,0)');
+      tc.fillStyle = ph; tc.beginPath(); tc.arc(cx, cy, (34 + pulse * 8) * big, 0, 6.283); tc.fill();
+      spike(cx, cy, (22 + pulse * 6) * big, 0.95, 0); spike(cx, cy, (22 + pulse * 6) * big, 0.95, Math.PI / 2);
+      spike(cx, cy, (9 + pulse * 3) * big, 0.55, Math.PI / 4); spike(cx, cy, (9 + pulse * 3) * big, 0.55, -Math.PI / 4);
+      tc.fillStyle = '#fffaf0'; tc.beginPath(); tc.arc(cx, cy, 4.2 * big, 0, 6.283); tc.fill();
+      tc.font = (fs + 1) + 'px ArcasMono, "Courier New", monospace'; if ('letterSpacing' in tc) tc.letterSpacing = '3px';
+      tc.textAlign = 'center'; tc.fillStyle = '#ddbf85'; tc.fillText('POLARIS', cx + 1.5, cy + 24 * big);
+      if ('letterSpacing' in tc) tc.letterSpacing = '0px';
+      tc.textAlign = 'left';
+    }
+
+    function loop(now) { if (!running) return; draw(now); requestAnimationFrame(loop); }
+    function go() { if (calm || running || !seen || document.hidden) return; running = true; requestAnimationFrame(loop); }
+    function halt() { running = false; }
+    function pick(e) {
+      const rect = canvas.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      let best = null, dist = 22;
+      inputs.forEach((s) => { const p = at(s), d = Math.hypot(p[0] - mx, p[1] - my); if (d < dist) { dist = d; best = s.key; } });
+      return best;
+    }
+    box.addEventListener('pointermove', (e) => { const k = pick(e); if (k !== hover) { hover = k; box.style.cursor = k ? 'pointer' : ''; if (!running) draw(performance.now()); } });
+    box.addEventListener('pointerleave', () => { hover = null; box.style.cursor = ''; if (!running) draw(performance.now()); });
+    box.addEventListener('click', (e) => { const k = pick(e), tab = k && document.querySelector('[data-input="' + k + '"]'); if (tab) selectInput(tab); });
+    if (build()) draw(performance.now());
+    if ('ResizeObserver' in window) new ResizeObserver(() => { if (build()) draw(performance.now()); }).observe(box);
+    if ('IntersectionObserver' in window) new IntersectionObserver((entries) => { seen = entries[0].isIntersecting; seen ? go() : halt(); }).observe(box);
+    document.addEventListener('visibilitychange', () => { document.hidden ? halt() : go(); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => draw(performance.now()));
+    go();
+    return { select(key) { active = key; if (!running) draw(performance.now()); } };
+  })();
   const inputTabs = [...document.querySelectorAll('[data-input]')];
 
   function selectInput(tab) {
@@ -349,10 +485,7 @@
     byId('context-number').textContent = content.number;
     byId('context-kicker').textContent = content.kicker;
     byId('context-description').textContent = content.description;
-    byId('active-model-line').setAttribute('d', content.path);
-    document.querySelectorAll('[data-model-label]').forEach((label) => {
-      label.style.color = label.dataset.modelLabel === key ? 'var(--gold)' : '#b3a07c';
-    });
+    trails.select(key);
   }
 
   inputTabs.forEach((tab, index) => {
