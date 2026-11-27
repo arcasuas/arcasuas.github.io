@@ -90,10 +90,31 @@
     const minY = Math.min(...shape.map((p) => p.y)), maxY = Math.max(...shape.map((p) => p.y));
     let seed = 11;
     const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-    let w = 0, h = 0, dpr = 1, small = false, stars = [], field = [], ridges = [], drones = [], hover = false, running = false, visible = true;
-    let tx = 0, ty = 0, cx = 0, cy = 0, last = performance.now();
-    let fleet = null, fleetOff = false, open = null;
+    let w = 0, h = 0, dpr = 1, small = false, stars = [], field = [], ridges = [], hover = false, running = false, visible = true;
+    let tx = 0, ty = 0, cx = 0, cy = 0, last = performance.now(), open = null;
     const born = performance.now();
+
+    // Real UAS swarm, cut from a public domain U.S. Army photo (Salaknib 2026, Cpl. Lilly Ekberg).
+    // Each entry is the sprite rect in assets/swarm.webp and the drone's position in the original frame.
+    const SWARM = [[0, 0, 379, 172, 0.2344, 0.1808], [385, 0, 338, 145, 0.7704, 0.3837], [729, 0, 338, 149, 0.5502, 0.4012], [1073, 0, 308, 142, 0.1784, 0.4617], [1387, 0, 223, 112, 0.8716, 0.5814], [1616, 0, 252, 120, 0.632, 0.5964], [1874, 0, 287, 119, 0.3144, 0.614]];
+    let swarm = [], swarmBorn = 0;
+    const sheet = new Image();
+    sheet.onload = () => {
+      swarm = SWARM.map(([sx, sy, sw, sh, fx, fy], i) => {
+        const crop = document.createElement('canvas'); crop.width = sw; crop.height = sh;
+        const c = crop.getContext('2d'); c.drawImage(sheet, sx, sy, sw, sh, 0, 0, sw, sh);
+        const tint = (color) => { const t = document.createElement('canvas'); t.width = sw; t.height = sh; const k = t.getContext('2d'); k.drawImage(crop, 0, 0); k.globalCompositeOperation = 'source-in'; k.fillStyle = color; k.fillRect(0, 0, sw, sh); return t; };
+        // navigation lights sit on the outermost motors, the strobe on the body
+        const a = c.getImageData(0, 0, sw, sh).data, solid = (x, y) => a[(y * sw + x) * 4 + 3] > 150;
+        const edge = (from, to, step) => { for (let x = from; x !== to; x += step) { let ys = 0, n = 0; for (let y = 0; y < sh; y++) if (solid(x, y)) { ys += y; n++; } if (n) return [x, ys / n]; } return [from, sh / 2]; };
+        let bx = 0, by = 0, bn = 0;
+        for (let y = 0; y < sh; y++) for (let x = Math.round(sw * 0.38); x < sw * 0.62; x++) if (solid(x, y)) { bx += x; by += y; bn++; }
+        return { crop, gold: tint('rgb(228,188,108)'), cool: tint('rgb(205,214,232)'), sw, sh, fx, fy, depth: sw / 379, ph: i * 1.7 + 0.4,
+          L: edge(0, sw, 1), R: edge(sw - 1, -1, -1), C: bn ? [bx / bn, by / bn + sh * 0.08] : [sw / 2, sh / 2] };
+      });
+      swarmBorn = performance.now(); placeSwarm(); draw(performance.now());
+    };
+    sheet.src = 'assets/swarm.webp?v=20261127b';
 
     function ridge(base, amp, seedShift) {
       const pts = [], n = 48, ph = [rand() * 6, rand() * 6, rand() * 6];
@@ -118,15 +139,6 @@
         return { x: rand(), y: Math.pow(rand(), 1.25) * 0.82, r: bright ? 1.1 + rand() * 0.7 : 0.35 + rand() * 0.8, a: bright ? 0.75 + rand() * 0.25 : 0.25 + rand() * 0.55, s: 0.5 + rand() * 2.2, p: rand() * 6.28, bright };
       });
       ridges = [ridge(small ? 0.86 : 0.83, small ? 0.035 : 0.05, 0), ridge(small ? 0.92 : 0.9, small ? 0.03 : 0.04, 2)];
-      const band = small ? [0.68, 0.82] : [0.52, 0.76];
-      const kinds = small ? ['wing', 'quad', 'wing', 'quad', 'wing'] : ['wing', 'quad', 'wing', 'wing', 'quad', 'wing', 'quad'];
-      drones = kinds.map((kind, i) => {
-        const depth = 0.5 + rand() * 0.55;
-        const dir = rand() < 0.5 ? -1 : 1;
-        const lo = small ? 0 : 0.4;
-        return { kind, depth, dir, x: (lo + rand() * (1 - lo)) * w, y: (band[0] + (band[1] - band[0]) * (i + rand() * 0.8) / kinds.length) * h,
-          speed: (kind === 'wing' ? 16 + rand() * 22 : 5 + rand() * 7) * depth * (small ? 0.7 : 1), phase: rand() * 6.28 };
-      });
       // keep the constellation in open sky, clear of the headline and labels
       const blocks = [];
       const add = (r) => { if (r.width && r.height) blocks.push({ l: r.left - box.left - 14, t: r.top - box.top - 14, r: r.right - box.left + 14, b: r.bottom - box.top + 14 }); };
@@ -145,7 +157,7 @@
       const k = Math.min(bw / (maxX - minX), bh / (maxY - minY));
       const ox = area.x0 * w + (bw - (maxX - minX) * k) / 2, oy = area.y0 * h + (bh - (maxY - minY) * k) / 2;
       stars = shape.map((p, i) => ({ x: ox + (p.x - minX) * k, y: oy + (p.y - minY) * k, mag: catalog[i][2] }));
-      // open band for the fleet, under the headline and clear of the copy
+      // open band for the swarm, under the headline and clear of the copy
       const reach = small ? 0 : w * 0.38;
       let floor = 0;
       const rects = [];
@@ -157,7 +169,41 @@
       rects.forEach((r) => { if (r.height && r.right - box.left > reach) floor = Math.max(floor, r.bottom - box.top); });
       const ground = h * (small ? 0.84 : 0.8);
       open = [Math.min(floor + (small ? 30 : 34), ground - h * 0.14) / h, ground / h];
-      if (fleet) fleet.resize(w, h, dpr, small, open);
+      placeSwarm();
+    }
+
+    // keep the photo's formation, scaled into the open band
+    function placeSwarm() {
+      if (!swarm.length || !open) return;
+      const top = open[0] * h, bottom = open[1] * h;
+      const x0 = small ? w * 0.1 : w * 0.5, x1 = small ? w * 0.9 : w * 0.94;
+      const most = Math.max(...swarm.map((d) => d.sh));
+      const k = Math.min((small ? w * 0.21 : Math.min(w * 0.1, 168)) / 379, (bottom - top) / (2.7 * most));
+      const tall = most * k;
+      const y0 = top + tall * 0.5, y1 = Math.max(y0, bottom - tall * 0.6);
+      swarm.forEach((d) => { d.k = k; d.x = x0 + (d.fx - 0.178) / 0.694 * (x1 - x0); d.y = y0 + (d.fy - 0.18) / 0.434 * (y1 - y0); });
+    }
+
+    function drawSwarm(t, now) {
+      if (!swarm.length) return;
+      const arrive = still ? 1 : Math.min(1, (now - swarmBorn) / 2800), ease = 1 - Math.pow(1 - arrive, 3);
+      const driftX = (1 - ease) * w * 0.6 + Math.sin(t * 0.07) * w * 0.012, driftY = Math.sin(t * 0.11) * 5;
+      swarm.forEach((d) => {
+        const x = d.x + driftX + Math.sin(t * 0.6 + d.ph * 1.3) * 4 + cx * 22 * d.depth;
+        const y = d.y + driftY + Math.sin(t * 1.1 + d.ph) * 3 * (0.6 + d.depth) + cy * 12 * d.depth;
+        const dw = d.sw * d.k, dh = d.sh * d.k, tilt = Math.sin(t * 0.8 + d.ph) * 0.025 - (1 - ease) * 0.08, a = 0.82 + 0.18 * d.depth;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
+        ctx.globalAlpha = 0.2 * a; ctx.drawImage(d.cool, -dw / 2 - 0.6, -dh / 2 - 0.6, dw, dh);
+        ctx.globalAlpha = 0.3 * a; ctx.drawImage(d.gold, -dw / 2 + 0.7, -dh / 2 + 0.7, dw, dh);
+        ctx.globalAlpha = a; ctx.drawImage(d.crop, -dw / 2, -dh / 2, dw, dh);
+        ctx.restore(); ctx.globalAlpha = 1;
+        const at = ([px, py]) => { const lx = (px - d.sw / 2) * d.k, ly = (py - d.sh / 2) * d.k; return [x + lx * Math.cos(tilt) - ly * Math.sin(tilt), y + lx * Math.sin(tilt) + ly * Math.cos(tilt)]; };
+        const r = 0.6 + 0.6 * d.depth, L = at(d.L), R = at(d.R), C = at(d.C);
+        light(L[0], L[1], r, 'rgba(255,70,60,A)', 0.85);
+        light(R[0], R[1], r, 'rgba(70,255,140,A)', 0.8);
+        const s = still ? 1 : (t + d.ph) % 1.4, strobe = s < 0.06 || (s > 0.18 && s < 0.24) ? 1 : 0;
+        light(C[0], C[1], r * 0.9, 'rgba(255,255,255,A)', 0.12 + 0.88 * strobe);
+      });
     }
 
     function light(x, y, r, color, alpha) {
@@ -165,49 +211,6 @@
       g.addColorStop(0, color.replace('A', alpha)); g.addColorStop(1, color.replace('A', 0));
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4, 0, 6.283); ctx.fill();
       ctx.fillStyle = color.replace('A', Math.min(1, alpha + 0.2)); ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
-    }
-
-    function drawDrone(d, t) {
-      const s = d.depth * (small ? 0.95 : 1.75);
-      const x = d.x + cx * 26 * d.depth, y = d.y + Math.sin(t * (d.kind === 'quad' ? 1.3 : 0.5) + d.phase) * (d.kind === 'quad' ? 4 : 6) + cy * 14 * d.depth;
-      const rim = `rgba(215,175,91,${0.3 + 0.35 * d.depth})`, body = '#1c1a17';
-      ctx.save(); ctx.translate(x, y); ctx.scale(s * d.dir, s);
-      ctx.lineJoin = 'round'; ctx.lineWidth = 0.9 / s;
-      let tips;
-      if (d.kind === 'wing') {
-        // three-quarter view: the planform is tilted so the wing reads as a swept diagonal
-        ctx.save(); ctx.transform(1, 0, 0.62, 0.3, 0, 0);
-        ctx.beginPath();
-        ctx.moveTo(30, 0); ctx.quadraticCurveTo(28, -4, 20, -4); ctx.lineTo(13, -4); ctx.lineTo(11, -44); ctx.lineTo(4, -44); ctx.lineTo(1, -4);
-        ctx.lineTo(-19, -3); ctx.lineTo(-23, -14); ctx.lineTo(-27, -14); ctx.lineTo(-26, -2); ctx.lineTo(-29, 0);
-        ctx.lineTo(-26, 2); ctx.lineTo(-27, 14); ctx.lineTo(-23, 14); ctx.lineTo(-19, 3); ctx.lineTo(1, 4); ctx.lineTo(4, 44); ctx.lineTo(11, 44); ctx.lineTo(13, 4); ctx.lineTo(20, 4); ctx.quadraticCurveTo(28, 4, 30, 0);
-        ctx.closePath(); ctx.fillStyle = body; ctx.fill(); ctx.strokeStyle = rim; ctx.stroke();
-        ctx.restore();
-        ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(-24, -1); ctx.lineTo(-27, -9); ctx.lineTo(-22, -9); ctx.lineTo(-19, -1); ctx.closePath(); ctx.fill(); ctx.strokeStyle = rim; ctx.stroke();
-        ctx.fillStyle = 'rgba(205,195,175,.07)'; ctx.beginPath(); ctx.ellipse(-30, 0, 1.6, 6, 0, 0, 6.283); ctx.fill();
-        tips = [[7.5 - 27, -13.2], [7.5 + 27, 13.2], [-26, -9]];
-      } else {
-        const arms = [[-17, -17], [17, -17], [-17, 17], [17, 17]].map(([ax, ay]) => [ax + 0.62 * ay, 0.3 * ay]);
-        ctx.strokeStyle = body; ctx.lineWidth = 3.2;
-        ctx.beginPath(); arms.forEach(([ax, ay]) => { ctx.moveTo(0, 0); ctx.lineTo(ax, ay); }); ctx.stroke();
-        ctx.lineWidth = 0.9 / s; ctx.strokeStyle = rim;
-        ctx.beginPath(); ctx.moveTo(-5, 4); ctx.lineTo(-7, 11); ctx.moveTo(5, 4); ctx.lineTo(7, 11); ctx.moveTo(-9, 11); ctx.lineTo(-4, 11); ctx.moveTo(4, 11); ctx.lineTo(9, 11); ctx.stroke();
-        ctx.fillStyle = body; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-8, -4, 16, 8, 2.5) : ctx.rect(-8, -4, 16, 8); ctx.fill(); ctx.stroke();
-        arms.forEach(([ax, ay]) => {
-          ctx.strokeStyle = body; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax, ay - 3); ctx.stroke();
-          ctx.fillStyle = 'rgba(215,205,185,.14)'; ctx.beginPath(); ctx.ellipse(ax, ay - 3.5, 11, 2.6, 0, 0, 6.283); ctx.fill();
-          ctx.strokeStyle = rim; ctx.lineWidth = 0.7 / s; ctx.stroke();
-        });
-        tips = [arms[1], arms[3], [0, -4]];
-      }
-      ctx.restore();
-      const pt = ([px, py]) => [x + px * s * d.dir, y + py * s];
-      const [a, b, c] = tips.map(pt);
-      const glow = 0.6 + 0.4 * d.depth;
-      light(a[0], a[1], 0.7 * s + 0.6, 'rgba(255,70,60,A)', 0.8 * glow);
-      light(b[0], b[1], 0.7 * s + 0.6, 'rgba(70,255,140,A)', 0.75 * glow);
-      const strobe = still ? 0 : ((t * 0.75 + d.phase) % 1.4) < 0.09 ? 1 : 0;
-      light(c[0], c[1], 0.6 * s + 0.6, 'rgba(255,255,255,A)', 0.3 + 0.7 * strobe);
     }
 
     function spike(x, y, len, alpha, angle) {
@@ -236,19 +239,6 @@
         ctx.beginPath(); ctx.arc(x, y, s.r, 0, 6.283); ctx.fill();
         if (s.bright) { ctx.fillStyle = `rgba(245,240,230,${0.12 * tw})`; ctx.beginPath(); ctx.arc(x, y, s.r * 3.2, 0, 6.283); ctx.fill(); }
       }
-      // drones: lit 3D models once three.js is ready, the drawn fleet only if WebGL is unavailable
-      if (fleet) fleet.frame(t, still ? 0 : dt, cx, cy);
-      else if (fleetOff) drones.sort((a, b) => a.depth - b.depth).forEach((d) => {
-        const pad = 90, lo = small ? -pad : w * 0.36;
-        if (!still) {
-          d.x += d.speed * d.dir * dt;
-          if (d.dir > 0 && d.x > w + pad) d.x = lo;
-          if (d.dir < 0 && d.x < lo) d.x = w + pad;
-        }
-        ctx.globalAlpha = small ? 1 : Math.max(0, Math.min(1, (d.x - w * 0.38) / (w * 0.12)));
-        if (ctx.globalAlpha > 0) drawDrone(d, t);
-        ctx.globalAlpha = 1;
-      });
       // ridgelines
       ridges.forEach((pts, i) => {
         ctx.beginPath(); ctx.moveTo(0, h);
@@ -271,6 +261,8 @@
         b.addColorStop(0, 'rgba(0,0,0,0)'); b.addColorStop(1, 'rgba(0,0,0,.9)');
         ctx.fillStyle = b; ctx.fillRect(0, h * 0.7, w, h * 0.3);
       }
+      // the swarm hovers in front of the ridgelines
+      drawSwarm(t, now);
       // Ursa Minor
       const grow = still ? 1 : Math.min(1, (now - born) / 1900);
       const pts = stars.map((s) => ({ x: s.x + cx * 14, y: s.y + cy * 14 }));
@@ -326,24 +318,6 @@
 
     layout(); draw(performance.now()); start();
     setTimeout(() => { layout(); draw(performance.now()); }, 1300);
-    // realistic drones: three.js from a CDN, with the drawn fleet as the fallback
-    const webgl = (() => { try { const gl = document.createElement('canvas').getContext('webgl2'); const lose = gl && gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext(); return !!gl; } catch (e) { return false; } })();
-    if (!webgl) fleetOff = true;
-    else {
-      const give = setTimeout(() => { if (!fleet) { fleetOff = true; draw(performance.now()); } }, 8000);
-      const load = () => import('https://cdn.jsdelivr.net/npm/three@0.187.0/+esm')
-        .catch(() => import('https://unpkg.com/three@0.187.0/build/three.module.js'))
-        .then((THREE) => import('./fleet.js?v=20261127a').then((m) => {
-          const made = m.createFleet(THREE);
-          made.canvas.addEventListener('webglcontextlost', () => { fleet = null; fleetOff = true; made.canvas.remove(); });
-          made.resize(w, h, dpr, small, open);
-          sky.after(made.canvas);
-          fleet = made; fleetOff = false; clearTimeout(give); draw(performance.now());
-          requestAnimationFrame(() => made.show());
-        }))
-        .catch(() => { fleetOff = true; clearTimeout(give); draw(performance.now()); });
-      if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 1200 }); else setTimeout(load, 300);
-    }
     window.addEventListener('resize', () => { layout(); draw(performance.now()); });
     window.addEventListener('pointermove', track, { passive: true });
     hero.addEventListener('click', (e) => {
