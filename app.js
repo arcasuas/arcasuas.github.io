@@ -104,13 +104,12 @@
         const crop = document.createElement('canvas'); crop.width = sw; crop.height = sh;
         const c = crop.getContext('2d'); c.drawImage(sheet, sx, sy, sw, sh, 0, 0, sw, sh);
         const tint = (color) => { const t = document.createElement('canvas'); t.width = sw; t.height = sh; const k = t.getContext('2d'); k.drawImage(crop, 0, 0); k.globalCompositeOperation = 'source-in'; k.fillStyle = color; k.fillRect(0, 0, sw, sh); return t; };
-        // navigation lights sit on the outermost motors, the strobe on the body
+        // the strobe sits on the body
         const a = c.getImageData(0, 0, sw, sh).data, solid = (x, y) => a[(y * sw + x) * 4 + 3] > 150;
-        const edge = (from, to, step) => { for (let x = from; x !== to; x += step) { let ys = 0, n = 0; for (let y = 0; y < sh; y++) if (solid(x, y)) { ys += y; n++; } if (n) return [x, ys / n]; } return [from, sh / 2]; };
         let bx = 0, by = 0, bn = 0;
         for (let y = 0; y < sh; y++) for (let x = Math.round(sw * 0.38); x < sw * 0.62; x++) if (solid(x, y)) { bx += x; by += y; bn++; }
         return { crop, gold: tint('rgb(228,188,108)'), cool: tint('rgb(205,214,232)'), sw, sh, fx, fy, depth: sw / 379, ph: i * 1.7 + 0.4,
-          L: edge(0, sw, 1), R: edge(sw - 1, -1, -1), C: bn ? [bx / bn, by / bn + sh * 0.08] : [sw / 2, sh / 2] };
+          C: bn ? [bx / bn, by / bn + sh * 0.08] : [sw / 2, sh / 2] };
       });
       swarmBorn = performance.now(); placeSwarm(); draw(performance.now());
     };
@@ -198,9 +197,7 @@
         ctx.globalAlpha = a; ctx.drawImage(d.crop, -dw / 2, -dh / 2, dw, dh);
         ctx.restore(); ctx.globalAlpha = 1;
         const at = ([px, py]) => { const lx = (px - d.sw / 2) * d.k, ly = (py - d.sh / 2) * d.k; return [x + lx * Math.cos(tilt) - ly * Math.sin(tilt), y + lx * Math.sin(tilt) + ly * Math.cos(tilt)]; };
-        const r = 0.6 + 0.6 * d.depth, L = at(d.L), R = at(d.R), C = at(d.C);
-        light(L[0], L[1], r, 'rgba(255,70,60,A)', 0.85);
-        light(R[0], R[1], r, 'rgba(70,255,140,A)', 0.8);
+        const r = 0.6 + 0.6 * d.depth, C = at(d.C);
         const s = still ? 1 : (t + d.ph) % 1.4, strobe = s < 0.06 || (s > 0.18 && s < 0.24) ? 1 : 0;
         light(C[0], C[1], r * 0.9, 'rgba(255,255,255,A)', 0.12 + 0.88 * strobe);
       });
