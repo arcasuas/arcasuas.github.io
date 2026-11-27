@@ -9,7 +9,7 @@
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="preload" href="assets/arcas-sans.woff" as="font" type="font/woff" crossorigin>
   <link rel="stylesheet" href="styles.css?v=20261126h">
-  <script src="app.js?v=20261127c" defer></script>
+  <script src="app.js?v=20261127d" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -70,11 +70,7 @@
           </div>
           <div class="context-panel" id="context-panel" role="tabpanel" aria-labelledby="input-battery" tabindex="0">
             <div class="panel-meta"><span><span class="status-dot"></span> Contextual energy model</span><span>INPUT <span id="context-number">01</span> / 05</span></div>
-            <div class="model-graphic" aria-hidden="true">
-              <svg class="model-lines" viewBox="0 0 600 250" fill="none"><defs><radialGradient id="hubGlow"><stop offset="0" stop-color="#d7af5b" stop-opacity=".10"/><stop offset="1" stop-color="#d7af5b" stop-opacity="0"/></radialGradient></defs><ellipse cx="300" cy="130" rx="210" ry="110" fill="url(#hubGlow)"/><ellipse cx="300" cy="130" rx="180" ry="94" stroke="#665b45" stroke-dasharray="2 7"/><ellipse cx="300" cy="130" rx="128" ry="66" stroke="#453e2f"/><path d="M100 65 240 130M150 208 248 137M460 56 354 122M508 160 352 137M354 218 318 158" stroke="#6b5f48"/><path class="active-model-line" id="active-model-line" d="M100 65 240 130" stroke="#d7af5b" stroke-width="1.5"/><circle cx="100" cy="65" r="5" fill="#d7af5b"/><circle cx="150" cy="208" r="4" fill="#87795c"/><circle cx="460" cy="56" r="4" fill="#87795c"/><circle cx="508" cy="160" r="4" fill="#87795c"/><circle cx="354" cy="218" r="4" fill="#87795c"/></svg>
-              <span class="model-label model-label-wind" data-model-label="battery">CELL DATA</span><span class="model-label model-label-route" data-model-label="controller">TELEMETRY</span><span class="model-label model-label-history" data-model-label="registry">PACK HISTORY</span><span class="model-label model-label-battery" data-model-label="mission">ROUTE + TASK</span><span class="model-label model-label-weather" data-model-label="weather">WEATHER</span>
-              <div class="model-core"><svg viewBox="0 0 44 44"><use href="#i-mark"/></svg><span>ARCAS</span></div>
-            </div>
+            <div class="model-graphic" aria-hidden="true"><canvas class="model-lines" id="model-trails"></canvas></div>
             <div class="context-copy"><span class="eyebrow" id="context-kicker">Start with the pack.</span><p id="context-description">Voltage, current, cell readings, and temperature come straight from the battery pack. They show the energy on board right now and set the baseline for every estimate.</p></div>
             <div class="model-output"><span>BATTERY + CONTEXT</span><span>→</span><span>USABLE ENERGY + RANGE</span></div>
           </div>
