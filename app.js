@@ -92,6 +92,7 @@
     const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
     let w = 0, h = 0, dpr = 1, small = false, stars = [], field = [], ridges = [], drones = [], hover = false, running = false, visible = true;
     let tx = 0, ty = 0, cx = 0, cy = 0, last = performance.now();
+    let fleet = null, fleetOff = false, open = null;
     const born = performance.now();
 
     function ridge(base, amp, seedShift) {
@@ -144,6 +145,19 @@
       const k = Math.min(bw / (maxX - minX), bh / (maxY - minY));
       const ox = area.x0 * w + (bw - (maxX - minX) * k) / 2, oy = area.y0 * h + (bh - (maxY - minY) * k) / 2;
       stars = shape.map((p, i) => ({ x: ox + (p.x - minX) * k, y: oy + (p.y - minY) * k, mag: catalog[i][2] }));
+      // open band for the fleet, under the headline and clear of the copy
+      const reach = small ? 0 : w * 0.38;
+      let floor = 0;
+      const rects = [];
+      hero.querySelectorAll('.hero-content > *').forEach((el) => {
+        if (el.children.length) [...el.children].forEach((c) => rects.push(c.getBoundingClientRect()));
+        else { const range = document.createRange(); range.selectNodeContents(el); rects.push(...range.getClientRects()); }
+      });
+      hero.querySelectorAll('.aircraft-tag').forEach((el) => rects.push(el.getBoundingClientRect()));
+      rects.forEach((r) => { if (r.height && r.right - box.left > reach) floor = Math.max(floor, r.bottom - box.top); });
+      const ground = h * (small ? 0.84 : 0.8);
+      open = [Math.min(floor + (small ? 30 : 34), ground - h * 0.14) / h, ground / h];
+      if (fleet) fleet.resize(w, h, dpr, small, open);
     }
 
     function light(x, y, r, color, alpha) {
@@ -222,8 +236,9 @@
         ctx.beginPath(); ctx.arc(x, y, s.r, 0, 6.283); ctx.fill();
         if (s.bright) { ctx.fillStyle = `rgba(245,240,230,${0.12 * tw})`; ctx.beginPath(); ctx.arc(x, y, s.r * 3.2, 0, 6.283); ctx.fill(); }
       }
-      // drones, far ones first
-      drones.sort((a, b) => a.depth - b.depth).forEach((d) => {
+      // drones: lit 3D models once three.js is ready, the drawn fleet only if WebGL is unavailable
+      if (fleet) fleet.frame(t, still ? 0 : dt, cx, cy);
+      else if (fleetOff) drones.sort((a, b) => a.depth - b.depth).forEach((d) => {
         const pad = 90, lo = small ? -pad : w * 0.36;
         if (!still) {
           d.x += d.speed * d.dir * dt;
@@ -311,6 +326,24 @@
 
     layout(); draw(performance.now()); start();
     setTimeout(() => { layout(); draw(performance.now()); }, 1300);
+    // realistic drones: three.js from a CDN, with the drawn fleet as the fallback
+    const webgl = (() => { try { const gl = document.createElement('canvas').getContext('webgl2'); const lose = gl && gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext(); return !!gl; } catch (e) { return false; } })();
+    if (!webgl) fleetOff = true;
+    else {
+      const give = setTimeout(() => { if (!fleet) { fleetOff = true; draw(performance.now()); } }, 8000);
+      const load = () => import('https://cdn.jsdelivr.net/npm/three@0.187.0/+esm')
+        .catch(() => import('https://unpkg.com/three@0.187.0/build/three.module.js'))
+        .then((THREE) => import('./fleet.js?v=20261127a').then((m) => {
+          const made = m.createFleet(THREE);
+          made.canvas.addEventListener('webglcontextlost', () => { fleet = null; fleetOff = true; made.canvas.remove(); });
+          made.resize(w, h, dpr, small, open);
+          sky.after(made.canvas);
+          fleet = made; fleetOff = false; clearTimeout(give); draw(performance.now());
+          requestAnimationFrame(() => made.show());
+        }))
+        .catch(() => { fleetOff = true; clearTimeout(give); draw(performance.now()); });
+      if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 1200 }); else setTimeout(load, 300);
+    }
     window.addEventListener('resize', () => { layout(); draw(performance.now()); });
     window.addEventListener('pointermove', track, { passive: true });
     hero.addEventListener('click', (e) => {
