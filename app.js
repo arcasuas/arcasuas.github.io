@@ -75,11 +75,11 @@
   renderDisplay();
 
   const inputContent = {
-    wind: { number: '01', kicker: 'The air is never static.', description: 'A headwind changes what the same charge can deliver. Wind conditions add context to the energy estimate, beyond what battery measurements alone can show.', path: 'M100 65 240 130' },
-    route: { number: '02', kicker: 'The next leg changes the picture.', description: 'A climb, a turn, or a longer route asks something different of the battery. Planned flight paths and maneuvers are part of our proposed estimation approach.', path: 'M460 56 354 122' },
-    history: { number: '03', kicker: 'Every battery has a history.', description: 'Past flights, charge cycles, and degradation influence the energy a pack can deliver. Usage history helps put today’s battery readings in context.', path: 'M150 208 248 137' },
-    battery: { number: '04', kicker: 'Start with the pack. Look beyond it.', description: 'Battery properties and health remain the foundation. Our concept adds environmental and flight information to those measurements for a fuller picture.', path: 'M508 160 352 137' },
-    weather: { number: '05', kicker: 'Conditions change. Energy changes.', description: 'Temperature and outside weather conditions affect battery behavior and flight demand. They belong in the estimate, not just in the preflight briefing.', path: 'M354 218 318 158' }
+    battery: { number: '01', kicker: 'Start with the pack.', description: 'Voltage, current, cell readings, and temperature come straight from the battery pack. They show the energy on board right now and set the baseline for every estimate.', path: 'M100 65 240 130' },
+    controller: { number: '02', kicker: 'Read how the aircraft is flying.', description: 'Airspeed, attitude, and GPS from the flight controller show how hard the aircraft is working. Polaris uses the telemetry already on board, with no added sensors.', path: 'M460 56 354 122' },
+    registry: { number: '03', kicker: 'Every pack has a history.', description: 'Each pack is tracked by ID, charge cycles, capacity, and state of health. After every landing, measured capacity updates its record, so the estimate learns how that specific pack ages.', path: 'M150 208 248 137' },
+    mission: { number: '04', kicker: 'Price the task before you take it.', description: 'The route, the assigned task, and the protected reserve define what the next leg will cost. Polaris weighs that cost against the energy left to show whether the aircraft can finish the task and still get home.', path: 'M508 160 352 137' },
+    weather: { number: '05', kicker: 'Conditions change. Energy changes.', description: 'Wind and temperature change both flight demand and battery behavior. They belong in the estimate, not just in the preflight briefing.', path: 'M354 218 318 158' }
   };
   const inputTabs = [...document.querySelectorAll('[data-input]')];
 
